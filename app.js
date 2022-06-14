@@ -2,10 +2,14 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const { Op } = require("sequelize");
 const Joi = require("joi");
+const cors = require("cors");
 const authMiddleware = require("./middlewares/auth-middleware");
 
 const app = express();
 const router = express.Router();
+
+//code for resolving CORS issues
+app.use(cors());
 
 //code for image uploading using Multer
 const multer = require("multer");
