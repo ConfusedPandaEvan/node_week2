@@ -1,0 +1,34 @@
+Week 2 project is created using Node, Express with Mysql as backend
+jwt token is used for login and Signup
+multer is used to save images from requests
+
+API calls are as follows
+
+*Signup
+POST "/api/users"
+
+*Login
+POST "/api/auth"
+
+*Checking user
+GET "/api/users/me"
+
+*Getting all existing posts
+GET "/api/post"
+
+*Creating Post
+POST "/api/post"
+
+*Get single Post
+GET "/api/post/:postId"
+
+*Delete post with postId
+DELETE "/api/post/:postId"
+
+*Edit post with postId
+PUT "/api/post/:postId"
+
+*Like or Unlike Post with postId
+GET "/api/post/:postId/like"
+
+
