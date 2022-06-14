@@ -146,7 +146,7 @@ router.get("/post", async (req, res) => {
 });
 
 //POST create posts - need to look into how to save image, check if the date is stored correctly
-router.post("/post", async (req, res) => {
+router.post("/post", authMiddleware, async (req, res) => {
   try {
     const { userId, title, content, imageLocation, layout } = req.body;
 
@@ -207,7 +207,7 @@ router.get("/post/:postId", async (req, res) => {
 });
 
 //DELETE single post
-router.delete("/post/:postId", async (req, res) => {
+router.delete("/post/:postId", authMiddleware, async (req, res) => {
   const { postId } = req.params;
   console.log(postId);
   const existsPost = await Post.findOne({
@@ -226,7 +226,7 @@ router.delete("/post/:postId", async (req, res) => {
 });
 
 //PUT edit post ***need to edit image info ***need to check post working with FE
-router.put("/post/:postId", async (req, res) => {
+router.put("/post/:postId", authMiddleware, async (req, res) => {
   const { title, content, imageLocation } = req.body;
   const { postId } = req.params;
 
@@ -252,7 +252,7 @@ router.put("/post/:postId", async (req, res) => {
 });
 
 //OFF.ON.OFF Like change to see userId as well
-router.get("/post/:postId/like", async (req, res) => {
+router.get("/post/:postId/like", authMiddleware, async (req, res) => {
   const { postId } = req.params;
 
   //change here for userId
