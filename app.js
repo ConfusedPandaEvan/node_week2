@@ -3,16 +3,26 @@ const jwt = require("jsonwebtoken");
 const { Op } = require("sequelize");
 const Joi = require("joi");
 const cors = require("cors");
+const fs = require('fs');
 const authMiddleware = require("./middlewares/auth-middleware");
-
 const app = express();
 const router = express.Router();
+
+//Bring from DB
+const { User, Post, Like } = require("./models");
+// const res = require("express/lib/response");
+const { path } = require("express/lib/application");
+
+app.use("/api", express.urlencoded({ extended: false }), router);
+
 
 //code for resolving CORS issues
 app.use(cors());
 
 //code for image uploading using Multer
 const multer = require("multer");
+
+
 //Set storage Engine
 const storage = multer.diskStorage({
     destination: './public/uploads/',
@@ -27,7 +37,7 @@ const upload = multer({
     fileFilter: function(req, file, cb){
         checkFileType(file, cb);
     }
-}).single('myimage')
+})
 
 //Check File Type
 function checkFileType(file, cb){
@@ -35,7 +45,6 @@ function checkFileType(file, cb){
     const filetypes = /jpeg|jpg|png|gif/;
     //Check extensions
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    //Check mime
     const mimetype = filetypes.test(file.mimetype);
 
     if(mimetype && extname){
@@ -45,10 +54,6 @@ function checkFileType(file, cb){
     }
 }
 
-//Bring from DB
-const { User, Post, Like } = require("./models");
-const res = require("express/lib/response");
-const { path } = require("express/lib/application");
 
 //Check Signup Inputs
 const postUserSchema = Joi.object({
@@ -139,43 +144,31 @@ router.get("/post", async (req, res) => {
   const posts = await Post.findAll({
     order: [["createdAt", "DESC"]],
   });
-
   res.send({
     posts,
   });
 });
 
 //POST create posts - need to look into how to save image, check if the date is stored correctly
-router.post("/post", authMiddleware, async (req, res) => {
+router.post("/post", authMiddleware, upload.single('image'), async (req, res) => {
   try {
-    const { userId, title, content, imageLocation, layout } = req.body;
+    const { userId, title, content, layout } = req.body;
+    const { user } = res.locals;
+    const nickname = user.userId;
 
-    //change this part of code on saving image
-    upload(req, res, (err) => {
-        if(err){
-            res.render('index', {
-                errorMessage: "something wrong with image upload"
-            });
-        } else {
-            res.render('index', {
-                msg: 'File Uploaded',
-                file: `uploads/${req.file.filename}`
-            })
-            console.log(req.file);
-            
-        }
-    })
-
+    let image = req.file.filename;
+    
     await Post.create({
       userId,
       title,
       content,
       createdAt: new Date().toISOString(),
       layout,
-      imageLocation,
+      nickname,
+      image,
     });
 
-    res.status(201).send({});
+    res.status(201).send({ success: true });
   } catch (err) {
     res.status(400).send({
       errorMessage: "something went wrong with posting",
@@ -185,9 +178,10 @@ router.post("/post", authMiddleware, async (req, res) => {
 });
 
 //GET single post -- Add if image is liked by me
-router.get("/post/:postId", async (req, res) => {
+router.get("/post/:postId", authMiddleware, async (req, res) => {
   const { postId } = req.params;
   const post = await Post.findByPk(postId);
+  const { user } = res.locals;
 
   if (!post) {
     res.status(404).send({
@@ -202,31 +196,62 @@ router.get("/post/:postId", async (req, res) => {
     let likeCount = likes.length;
     post.dataValues.likeCount = likeCount;
 
+    //Check if Liked by me
+    let likeByMe = false;
+    let like = await Like.findAll({
+      where: { postId, userId: user.userId }
+    })
+    if (like) {
+      likeByMe = true
+    }
+    post.dataValues.likeByMe = likeByMe;
+
     res.send({ post });
   }
 });
 
 //DELETE single post
 router.delete("/post/:postId", authMiddleware, async (req, res) => {
+  const { user } = res.locals;
+  
   const { postId } = req.params;
-  console.log(postId);
   const existsPost = await Post.findOne({
     where: { postId },
   });
 
-  if (existsPost) {
-    //delete post and likes with the postId
-    await existsPost.destroy();
-    await Like.destroy({
-      where: { postId },
+  if (!existsPost){
+    res.status(400).send({
+      errorMessage: "Please check the PostId.",
     });
+    return;
   }
 
-  res.send({});
+  if (existsPost.userId != user.userId && user.admin != true) {
+    res.status(400).send({
+      errorMessage: "You cannot delete this post.",
+    });
+  } else {
+    if (existsPost) {
+      //delete post and likes with the postId
+      await existsPost.destroy();
+      await Like.destroy({
+        where: { postId },
+      });
+      try{
+        await fs.unlink("./public/uploads/" + post.image);
+      } catch (error) {
+        console.log(error);
+      }
+      
+    }
+  
+    res.send({});
+  }
 });
 
-//PUT edit post ***need to edit image info ***need to check post working with FE
+//PUT edit post ***need to edit image info
 router.put("/post/:postId", authMiddleware, async (req, res) => {
+  const { user } = res.locals;
   const { title, content, imageLocation } = req.body;
   const { postId } = req.params;
 
@@ -235,7 +260,12 @@ router.put("/post/:postId", authMiddleware, async (req, res) => {
       postId,
     },
   });
-
+  if (existsPost.userId != user.userId && user.admin != true) {
+    res.status(400).send({
+      errorMessage: "You cannot change this post.",
+    });
+    return;
+  }
   //If post exists, update information
   if (existsPost) {
     existsPost.title = title;
@@ -254,12 +284,11 @@ router.put("/post/:postId", authMiddleware, async (req, res) => {
 //OFF.ON.OFF Like change to see userId as well
 router.get("/post/:postId/like", authMiddleware, async (req, res) => {
   const { postId } = req.params;
+  const { user } = res.locals;
 
-  //change here for userId
-  const userId = 1;
 
   const existsLike = await Like.findAll({
-    where: { postId, userId },
+    where: { postId, userId: user.userId },
   });
 
   //If Like does not exist, create one, if it exists delete it
@@ -282,10 +311,7 @@ router.get("/", (req, res) => {
 });
 
 app.use(express.json());
-// app.use(express.urlencoded());
 
-app.use("/api", express.urlencoded({ extended: false }), router);
-app.use(express.static("assets"));
 
 //console log requests
 const requestMiddleware = (req, res, next) => {
